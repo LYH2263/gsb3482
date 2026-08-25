@@ -8,6 +8,7 @@ import com.cliphub.dto.MaterialUploadMetaRequest;
 import com.cliphub.dto.ShareRequest;
 import com.cliphub.entity.*;
 import com.cliphub.mapper.*;
+import com.cliphub.security.MaterialAccessChecker;
 import com.cliphub.security.UserPrincipal;
 import com.cliphub.service.AuditLogService;
 import com.cliphub.service.MaterialService;
@@ -39,8 +40,8 @@ public class MaterialServiceImpl implements MaterialService {
     private final TagMapper tagMapper;
     private final FavoriteMapper favoriteMapper;
     private final ShareLinkMapper shareLinkMapper;
-    private final UserMapper userMapper;
     private final AuditLogService auditLogService;
+    private final MaterialAccessChecker materialAccessChecker;
 
     @Value("${app.storage.root}")
     private String storageRoot;
@@ -362,20 +363,7 @@ public class MaterialServiceImpl implements MaterialService {
     }
 
     private boolean canAccess(UserPrincipal principal, Material material) {
-        if ("ADMIN".equals(principal.getRole())) {
-            return true;
-        }
-        if (Objects.equals(material.getOwnerId(), principal.getId())) {
-            return true;
-        }
-        if ("PUBLIC".equalsIgnoreCase(material.getVisibility())) {
-            return true;
-        }
-        if ("TEAM".equalsIgnoreCase(material.getVisibility()) && principal.getTeamId() != null) {
-            User owner = userMapper.selectById(material.getOwnerId());
-            return owner != null && Objects.equals(owner.getTeamId(), principal.getTeamId());
-        }
-        return false;
+        return materialAccessChecker.canAccess(principal, material);
     }
 
     private void resetTags(Long materialId, List<Long> tagIds) {
