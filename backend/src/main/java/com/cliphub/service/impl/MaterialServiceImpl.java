@@ -8,6 +8,7 @@ import com.cliphub.dto.MaterialUploadMetaRequest;
 import com.cliphub.dto.ShareRequest;
 import com.cliphub.entity.*;
 import com.cliphub.mapper.*;
+import com.cliphub.security.MaterialAccessChecker;
 import com.cliphub.security.UserPrincipal;
 import com.cliphub.service.AuditLogService;
 import com.cliphub.service.MaterialService;
@@ -39,7 +40,7 @@ public class MaterialServiceImpl implements MaterialService {
     private final TagMapper tagMapper;
     private final FavoriteMapper favoriteMapper;
     private final ShareLinkMapper shareLinkMapper;
-    private final UserMapper userMapper;
+    private final MaterialAccessChecker materialAccessChecker;
     private final AuditLogService auditLogService;
 
     @Value("${app.storage.root}")
@@ -189,7 +190,7 @@ public class MaterialServiceImpl implements MaterialService {
 
         List<Material> raw = materialMapper.selectList(wrapper);
         List<Material> filtered = raw.stream()
-                .filter(material -> canAccess(principal, material))
+                .filter(material -> materialAccessChecker.canAccess(principal, material))
                 .filter(material -> tagMaterialIds == null || tagMaterialIds.contains(material.getId()))
                 .toList();
 
@@ -207,7 +208,7 @@ public class MaterialServiceImpl implements MaterialService {
     @Override
     public Map<String, Object> detail(UserPrincipal principal, Long materialId) {
         Material material = mustGet(materialId);
-        if (!canAccess(principal, material)) {
+        if (!materialAccessChecker.canAccess(principal, material)) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "素材无访问权限");
         }
         return materialToMap(material);
@@ -217,7 +218,7 @@ public class MaterialServiceImpl implements MaterialService {
     @Transactional
     public Map<String, Object> toggleFavorite(UserPrincipal principal, Long materialId) {
         Material material = mustGet(materialId);
-        if (!canAccess(principal, material)) {
+        if (!materialAccessChecker.canAccess(principal, material)) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "素材无访问权限");
         }
 
@@ -255,7 +256,7 @@ public class MaterialServiceImpl implements MaterialService {
     @Transactional
     public Map<String, Object> createShare(UserPrincipal principal, Long materialId, ShareRequest request) {
         Material material = mustGet(materialId);
-        if (!canAccess(principal, material)) {
+        if (!materialAccessChecker.canAccess(principal, material)) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "素材无访问权限");
         }
 
@@ -313,7 +314,7 @@ public class MaterialServiceImpl implements MaterialService {
         List<Map<String, Object>> result = new ArrayList<>();
         for (Favorite favorite : favorites) {
             Material material = materialMap.get(favorite.getMaterialId());
-            if (material != null && canAccess(principal, material)) {
+            if (material != null && materialAccessChecker.canAccess(principal, material)) {
                 result.add(materialToMap(material));
             }
         }
@@ -324,7 +325,7 @@ public class MaterialServiceImpl implements MaterialService {
     @Transactional
     public String resolveDownloadPath(UserPrincipal principal, Long materialId, String quality, String format) {
         Material material = mustGet(materialId);
-        if (!canAccess(principal, material)) {
+        if (!materialAccessChecker.canAccess(principal, material)) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "素材无访问权限");
         }
 
@@ -340,7 +341,7 @@ public class MaterialServiceImpl implements MaterialService {
     @Override
     public String resolvePreviewPath(UserPrincipal principal, Long materialId) {
         Material material = mustGet(materialId);
-        if (!canAccess(principal, material)) {
+        if (!materialAccessChecker.canAccess(principal, material)) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "素材无访问权限");
         }
         return material.getPreviewPath();
@@ -359,23 +360,6 @@ public class MaterialServiceImpl implements MaterialService {
             return;
         }
         throw new BusinessException(HttpStatus.FORBIDDEN, "仅素材所有者或管理员可操作");
-    }
-
-    private boolean canAccess(UserPrincipal principal, Material material) {
-        if ("ADMIN".equals(principal.getRole())) {
-            return true;
-        }
-        if (Objects.equals(material.getOwnerId(), principal.getId())) {
-            return true;
-        }
-        if ("PUBLIC".equalsIgnoreCase(material.getVisibility())) {
-            return true;
-        }
-        if ("TEAM".equalsIgnoreCase(material.getVisibility()) && principal.getTeamId() != null) {
-            User owner = userMapper.selectById(material.getOwnerId());
-            return owner != null && Objects.equals(owner.getTeamId(), principal.getTeamId());
-        }
-        return false;
     }
 
     private void resetTags(Long materialId, List<Long> tagIds) {
