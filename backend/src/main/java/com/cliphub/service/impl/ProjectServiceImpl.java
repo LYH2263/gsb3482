@@ -8,6 +8,7 @@ import com.cliphub.dto.ProjectCreateRequest;
 import com.cliphub.dto.SaveVersionRequest;
 import com.cliphub.entity.*;
 import com.cliphub.mapper.*;
+import com.cliphub.security.MaterialAccessChecker;
 import com.cliphub.security.UserPrincipal;
 import com.cliphub.service.AuditLogService;
 import com.cliphub.service.ProjectService;
@@ -35,6 +36,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final ProjectCollaboratorMapper projectCollaboratorMapper;
     private final MaterialMapper materialMapper;
     private final UserMapper userMapper;
+    private final MaterialAccessChecker materialAccessChecker;
     private final AuditLogService auditLogService;
 
     @Value("${app.storage.root}")
@@ -283,7 +285,7 @@ public class ProjectServiceImpl implements ProjectService {
         if (material == null) {
             throw new BusinessException("素材不存在");
         }
-        if (!canAccessMaterial(principal, material)) {
+        if (!materialAccessChecker.canAccess(principal, material)) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "素材不可绑定到该项目");
         }
 
@@ -339,23 +341,6 @@ public class ProjectServiceImpl implements ProjectService {
         if (collaborator == null || !"EDITOR".equalsIgnoreCase(collaborator.getRole())) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "无项目编辑权限");
         }
-    }
-
-    private boolean canAccessMaterial(UserPrincipal principal, Material material) {
-        if ("ADMIN".equals(principal.getRole())) {
-            return true;
-        }
-        if (Objects.equals(material.getOwnerId(), principal.getId())) {
-            return true;
-        }
-        if ("PUBLIC".equalsIgnoreCase(material.getVisibility())) {
-            return true;
-        }
-        if ("TEAM".equalsIgnoreCase(material.getVisibility()) && principal.getTeamId() != null) {
-            User owner = userMapper.selectById(material.getOwnerId());
-            return owner != null && Objects.equals(owner.getTeamId(), principal.getTeamId());
-        }
-        return false;
     }
 
     private Map<String, Object> projectToMap(Project project) {
